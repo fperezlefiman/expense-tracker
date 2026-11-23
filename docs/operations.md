@@ -15,12 +15,16 @@ las decisiones, en [`decisions/`](decisions/).
 
 1. Push a `main` → GitHub Actions: `mvn verify` (unitarios + Testcontainers).
 2. Imagen publicada en Artifact Registry, tageada con el SHA del commit.
-3. Deploy a Cloud Run autenticado por **Workload Identity Federation** (sin llaves JSON).
-4. Migraciones Flyway corren al arrancar; `ddl-auto: validate` aborta el deploy si el esquema no
-   coincide.
+3. **Migraciones en un Cloud Run Job**, no al arrancar: se ejecuta una sola vez antes de desplegar y
+   aplica Flyway. Con tres servicios arrancando en paralelo, migrar en el arranque significa tres
+   intentos concurrentes y un rollback de imagen que no revierte el esquema.
+4. Deploy de los tres servicios (webhook, worker, API) y del job de migración, autenticado por
+   **Workload Identity Federation** (sin llaves JSON).
+5. Los servicios arrancan con `ddl-auto: validate`: si el esquema no coincide, el deploy falla.
+6. Cloud Scheduler se actualiza apuntando al worker nuevo (OIDC, un minuto).
 
-Rollback: se vuelve a la imagen anterior. Las migraciones ya aplicadas no se revierten (ADR 0002):
-si un cambio de esquema es incompatible, se despliega en dos pasos.
+Rollback: se vuelve a la imagen anterior de los servicios. Las migraciones ya aplicadas no se revierten
+(ADR 0002): si un cambio de esquema es incompatible, se despliega en dos pasos.
 
 ## Secretos
 
@@ -30,23 +34,42 @@ si un cambio de esquema es incompatible, se despliega en dos pasos.
 
 ## Alertas
 
-Cuatro, y todas sobre síntoma, no sobre causa. Cada una con su runbook de tres líneas.
+Todas sobre **síntoma, no sobre causa**, y todas en un solo lugar: una alerta que vive en tres
+secciones del documento es una alerta que se duplica en la consola.
 
-**1. Silencio de ingesta** — ningún evento en 12 h.
-Runbook: revisar `watch` en Gmail (`users.getProfile` + fecha de expiración guardada) → si venció,
-renovar; si no, revisar suscripción Pub/Sub y última ejecución del webhook.
+| # | Alerta | Umbral | Fuente |
+|---|---|---|---|
+| 1 | Silencio de ingesta | 0 eventos en 12 h | métrica propia del webhook |
+| 2 | Pendiente viejo | fila más antigua `processed_at is null` > 15 min | consulta sobre `raw_emails` |
+| 3 | Extracción fallida | > 20 % en 1 h | métrica del worker |
+| 4 | Gasto del LLM | > presupuesto mensual | `account_usage` |
+| 5 | Cuota de una cuenta | > 80 % de `monthly_email_quota` | `account_usage` |
+| 6 | Ingesta de logs | > 70 % del cupo (~35 GiB) | Cloud Logging |
+| 7 | Instancias de Cloud Run | > 2 durante 10 min | *Container instance count* |
+| 8 | Requests del servicio | > 70 % del cupo (1,4M de 2M) | Cloud Monitoring |
+| 9 | Neon | > 70 % de storage (700 MB) o de cómputo | consola de Neon |
 
-**2. Pendiente viejo** — la fila más antigua con `processed_at = null` supera 15 min.
-Runbook: mirar `attempts` y `locked_at`; si el lock está vencido, el worker murió → revisar logs del
-worker; si todos los pendientes tienen error del LLM, revisar cuota y proveedor.
+Además de las alertas: **revisión manual de la facturación el día 1 de cada mes**, cinco minutos,
+aunque marque USD 0.
 
-**3. Extracción fallida > 20 % en 1 h.**
-Runbook: leer el error agrupado (timeout / 429 / JSON inválido); si es JSON, sospechar cambio de modelo
-o de prompt y correr evals contra el dataset antes de tocar nada.
+### Runbooks
 
-**4. Gasto mensual del LLM > presupuesto.**
-Runbook: revisar correos procesados y tokens por correo; si el promedio subió, buscar correos con
-adjuntos o HTML gigante. Si es volumen legítimo, ajustar el presupuesto, no apagar la extracción.
+**1. Silencio de ingesta.** Revisar el `watch` en Gmail (`users.getProfile` y fecha de expiración
+guardada) → si venció, renovar; si no, revisar la suscripción de Pub/Sub y la última ejecución del
+webhook.
+
+**2. Pendiente viejo.** Mirar `attempts`, `next_attempt_at` y `locked_at`; si el lock está vencido, el
+worker murió → logs del worker; si todos los pendientes tienen error del LLM, revisar cuota y proveedor.
+
+**3. Extracción fallida.** Leer el error agrupado (timeout / 429 / JSON inválido); si es JSON, sospechar
+cambio de modelo o de prompt y correr las evals contra el dataset antes de tocar nada.
+
+**4. Gasto del LLM.** Revisar correos procesados y tokens por correo; si el promedio subió, buscar
+correos con adjuntos o HTML gigante. Si es volumen legítimo, ajustar el presupuesto, no apagar la
+extracción.
+
+**6. Logs.** Buscar el `service` que más ingesta aporta en Logs Explorer; casi siempre es un health
+check o un bucle de reintento. Si es un bucle, arreglar la causa antes de agregar exclusiones.
 
 ## Logs y observabilidad
 
@@ -87,8 +110,8 @@ No los logs de negocio, los del framework y la infraestructura:
 - **Retención 30 días**, sin extender.
 - **Logs para explicar, métricas para contar**: p95, costo por correo y tasa de fallo van como métricas
   de Micrometer, no como líneas de log que después hay que contar caras.
-- **Alerta al 70 % del cupo de ingesta** (~35 GiB): detecta un defecto que infla el volumen, no el
-  crecimiento orgánico.
+- **Alerta al 70 % del cupo de ingesta** (~35 GiB), en la tabla de [Alertas](#alertas): detecta un
+  defecto que infla el volumen, no el crecimiento orgánico.
 
 ### Lo que no se hace
 
@@ -115,15 +138,12 @@ plan gratis no tiene límite de tiempo (1 GB de storage y 100 horas de cómputo 
 **Always Free es una franquicia, no un tope:** si se excede, se factura la diferencia. Nadie te avisa
 solo, así que los avisos hay que configurarlos.
 
-### Alertas de uso (configurar antes del primer deploy)
+### Presupuesto (configurar antes del primer deploy)
 
-1. **Presupuesto con alertas escalonadas**: USD 1, 5 y 20 sobre la cuenta de facturación. Los
-   presupuestos **avisan, no bloquean** — sirven para enterarse el mismo día, no para frenar.
-2. **Alerta de instancias** sobre el metric *Container instance count* de Cloud Run: si supera 2
-   instancias durante 10 minutos, algo está escalando sin control.
-3. **Alerta de requests** por servicio al 70 % del cupo mensual (1,4M de los 2M).
-4. **Neon**: aviso al 70 % de storage (700 MB) y al 70 % de cómputo mensual.
-5. **Revisión mensual de la facturación**: cinco minutos el día 1, aunque marque USD 0.
+- **Alertas escalonadas de USD 1, 5 y 20** sobre la cuenta de facturación. Los presupuestos **avisan, no
+  bloquean**: sirven para enterarse el mismo día, no para frenar.
+- Los demás avisos de uso —instancias, requests, Neon y cuota por cuenta— viven en una sola tabla en
+  [Alertas](#alertas), para que no existan dos listas que se desincronicen.
 
 ### Topes duros (no dependen de que alguien mire)
 

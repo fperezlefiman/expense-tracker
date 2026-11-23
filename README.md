@@ -58,6 +58,9 @@ Tres ideas sostienen el diseño:
 | [0007](docs/decisions/0007-ingestion-resilience.md) | Ingesta resiliente | El watch vence a los 7 días y falla en silencio |
 | [0008](docs/decisions/0008-worker-triggered-by-scheduler.md) | Pub/Sub solo como transporte de entrada | La tabla es la cola: una sola fuente de verdad |
 | [0009](docs/decisions/0009-indexes-and-partitioning.md) | Índices parciales, particiones diferidas | Particionar rompería la unicidad de `gmail_message` |
+| [0010](docs/decisions/0010-api-authentication.md) | API key por cuenta | Sin auth, el rate limiting protege el cupo, no los datos |
+| [0011](docs/decisions/0011-dedupe-survives-purge.md) | El gasto guarda su `gmail_message` | La unicidad no puede depender de una fila que se purga |
+| [0012](docs/decisions/0012-quota-enforcement.md) | La cuota bloquea la extracción, no la ingesta | Un correo recibido no se descarta nunca |
 
 ## Documentación
 

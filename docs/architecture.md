@@ -20,7 +20,7 @@ flowchart TB
     subgraph Datos
         PG[("PostgreSQL")]
     end
-    CF1["Cloudflare<br/>DNS · WAF · rate limit"]
+    CF1["Cloudflare<br/>(opcional, fuera del v0)"]
     U["Usuario / cliente"]
 
     GM -->|"watch"| PS
@@ -29,8 +29,8 @@ flowchart TB
     SCH -->|"POST /internal/extract (OIDC)"| WK
     WK -->|"SKIP LOCKED"| PG
     WK -->|"LLM"| EXT["Spring AI"]
-    CF1 --> API
-    U --> CF1
+    U -->|"API key"| API
+    CF1 -.->|"opcional: dominio + WAF"| API
     API --> PG
 ```
 
@@ -67,6 +67,7 @@ sequenceDiagram
 erDiagram
     ACCOUNTS ||--o{ RAW_EMAILS : owns
     ACCOUNTS ||--o{ ACCOUNT_USAGE : "cuenta por período"
+    ACCOUNTS ||--o{ API_KEYS : "autentica"
     RAW_EMAILS ||--o| EXPENSES : produces
 
     ACCOUNTS {
@@ -84,6 +85,8 @@ erDiagram
         timestamptz received_at
         timestamptz processed_at "null = pendiente"
         int attempts
+        timestamptz next_attempt_at "backoff: cuándo vuelve a estar disponible"
+        bool blocked_by_quota "cuenta sobre su cuota"
         timestamptz locked_at
         text locked_by
     }
@@ -91,6 +94,7 @@ erDiagram
         uuid id PK
         uuid account_id FK
         uuid raw_email_id FK "null tras la purga: on delete set null"
+        text gmail_message "dedupe que sobrevive a la purga (ADR 0011)"
         numeric amount
         char currency "ISO-4217"
         date occurred_on
@@ -104,12 +108,21 @@ erDiagram
         bigint tokens_used
         bigint cost_micros
     }
+    API_KEYS {
+        uuid id PK
+        uuid account_id FK
+        text key_prefix "8 chars, para identificar en logs"
+        text key_hash "Argon2/bcrypt, nunca la key"
+        timestamptz revoked_at
+    }
 ```
 
 Notas que importan más que las columnas:
 
 - **La clave de idempotencia es por cuenta**: `(account_id, gmail_message)` único.
-- `attempts`, `locked_at` y `locked_by` existen para que un worker que muere no bloquee la fila.
+- `expenses` guarda también `gmail_message`: la deduplicación sobrevive a la purga del crudo (ADR 0011).
+- `attempts`, `next_attempt_at`, `blocked_by_quota`, `locked_at` y `locked_by` existen para que el
+  worker reintente con backoff, respete la cuota (ADR 0012) y no bloquee la fila si muere.
 - `payload` en `jsonb` guarda el correo completo: es el insumo de la reprocesabilidad y de las evals.
 
 ## Índices y retención

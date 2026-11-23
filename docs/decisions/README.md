@@ -16,11 +16,16 @@ inmutables: una decisión no se edita, se reemplaza por un ADR nuevo que la supe
 | [0007](0007-ingestion-resilience.md) | Resiliencia de la ingesta: watch, reintentos, backfill | aceptado | 2026-11-23 |
 | [0008](0008-worker-triggered-by-scheduler.md) | Pub/Sub es transporte de entrada, no cola de trabajos | aceptado | 2026-11-23 |
 | [0009](0009-indexes-and-partitioning.md) | Índices parciales ahora, particiones diferidas | aceptado | 2026-11-23 |
+| [0010](0010-api-authentication.md) | Autenticación de la API: API key por cuenta | aceptado | 2026-11-23 |
+| [0011](0011-dedupe-survives-purge.md) | La deduplicación de gastos sobrevive a la purga | aceptado | 2026-11-23 |
+| [0012](0012-quota-enforcement.md) | Punto de aplicación de la cuota | aceptado | 2026-11-23 |
 
 ## Convenciones
 
 - Nombre: `NNNN-titulo-corto.md`, numeración incremental, sin volver a usar un número.
 - Secciones fijas: **Contexto**, **Decisión**, **Consecuencias**, **Alternativas rechazadas**.
+  Opcional al final: **Relación con otros ADR**, cuando la decisión precisa el alcance de otra sin
+  reemplazarla.
 - Una decisión por archivo. Si el título necesita un "y", son dos ADRs.
 - Cambiar de opinión = ADR nuevo con `Reemplaza a NNNN` en el encabezado, y el viejo pasa a
   `reemplazado por NNNN`.
