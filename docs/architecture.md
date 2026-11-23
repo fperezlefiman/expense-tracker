@@ -66,6 +66,7 @@ sequenceDiagram
 ```mermaid
 erDiagram
     ACCOUNTS ||--o{ RAW_EMAILS : owns
+    ACCOUNTS ||--o{ ACCOUNT_USAGE : "cuenta por período"
     RAW_EMAILS ||--o| EXPENSES : produces
 
     ACCOUNTS {
@@ -89,12 +90,19 @@ erDiagram
     EXPENSES {
         uuid id PK
         uuid account_id FK
-        uuid raw_email_id FK
+        uuid raw_email_id FK "null tras la purga: on delete set null"
         numeric amount
         char currency "ISO-4217"
         date occurred_on
         text description
         text category
+    }
+    ACCOUNT_USAGE {
+        uuid account_id PK
+        char period PK "YYYY-MM"
+        int emails_received
+        bigint tokens_used
+        bigint cost_micros
     }
 ```
 
@@ -103,6 +111,48 @@ Notas que importan más que las columnas:
 - **La clave de idempotencia es por cuenta**: `(account_id, gmail_message)` único.
 - `attempts`, `locked_at` y `locked_by` existen para que un worker que muere no bloquee la fila.
 - `payload` en `jsonb` guarda el correo completo: es el insumo de la reprocesabilidad y de las evals.
+
+## Índices y retención
+
+Los índices no son decoración: cada uno existe porque hay una consulta que lo usa. Los que el flujo
+necesita desde V1:
+
+```sql
+-- idempotencia: una fila por correo y cuenta
+create unique index raw_emails_message_uk on raw_emails (account_id, gmail_message);
+
+-- consulta del worker (cada minuto). PARCIAL: solo indexa lo que está vivo
+create index raw_emails_pending_idx on raw_emails (next_attempt_at)
+  where processed_at is null and attempts < 5;
+
+-- cuotas y consultas por cuenta
+create index raw_emails_account_received_idx on raw_emails (account_id, received_at desc);
+
+-- purga por retención: BRIN, porque la tabla es append-only
+create index raw_emails_received_brin on raw_emails using brin (received_at);
+
+-- una sola extracción por correo, aunque el worker reintente
+create unique index expenses_raw_email_uk on expenses (raw_email_id)
+  where raw_email_id is not null;
+
+-- resumen mensual por cuenta
+create index expenses_account_date_idx on expenses (account_id, occurred_on desc);
+```
+
+**Por qué parcial y no completo:** un índice sobre `processed_at` se degrada porque casi todas las filas
+terminan procesadas; el parcial indexa solo pendientes y se mantiene en kilobytes con cualquier volumen.
+
+**Retención y purga:** `raw_emails` se borra a los 90 días, por lotes. El `delete` no arrastra gastos:
+`expenses.raw_email_id` es `null` con `on delete set null`. El crudo es insumo desechable; el gasto es el
+dato de valor.
+
+**Particiones: ninguna en v0.** Postgres exige que toda restricción única de una tabla particionada
+incluya la columna de partición, así que particionar por `received_at` degradaría
+`unique (account_id, gmail_message)` a unicidad mensual y rompería la idempotencia. Umbral de revisión:
+~5–10 millones de filas en `raw_emails`, y la salida será una tabla de deduplicación aparte (ADR 0009).
+
+**Cuotas:** se leen de `account_usage` (una fila por cuenta y período), no con `count(*)` sobre el
+histórico.
 
 ## Límites del sistema
 
