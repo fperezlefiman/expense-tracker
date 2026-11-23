@@ -11,13 +11,18 @@ defendible.
 
 ## Decisión
 
-- **Cloud Run** para el webhook, el worker y la API, como servicios separados. Webhook y worker **sin
-  ingress público**; Pub/Sub se autentica con **OIDC** (`--no-allow-unauthenticated`).
-- **Pub/Sub** para la ingesta y para la cola de trabajos, con **dead letter topic** propio.
-- **PostgreSQL**: Neon para el v0 (tier gratis, branching para tests); Cloud SQL cuando haya clientes
-  que paguen.
-- **Cloudflare** delante: DNS, WAF, rate limiting y la landing pública. No ejecuta la aplicación.
-- **GitHub Actions con Workload Identity Federation**, sin llaves JSON en secretos.
+1. **Cloud Run** para el webhook, el worker y la API, como servicios separados. Webhook y worker **sin
+   ingress público**; Pub/Sub se autentica con **OIDC** (`--no-allow-unauthenticated`).
+2. **Pub/Sub** solo como transporte de entrada, con **dead letter topic** en la suscripción para los
+   mensajes que nunca se pueden guardar. El trabajo pendiente y sus reintentos viven en la tabla
+   (ADR 0008).
+3. **PostgreSQL**: Neon para el v0 (tier gratis, branching para tests); Cloud SQL cuando haya clientes
+   que paguen.
+4. **Cloudflare: opcional y fuera del camino crítico.** El v0 no lo necesita — Cloud Run ya da HTTPS con
+   certificado gestionado y absorbe el DDoS volumétrico. Entra cuando haya dominio propio
+   (`api.<dominio>`) o tráfico de desconocidos, y su valor real es **rate limiting en el edge**, no la
+   seguridad: no autentica nada.
+5. **GitHub Actions con Workload Identity Federation**, sin llaves JSON en secretos.
 
 ## Consecuencias
 

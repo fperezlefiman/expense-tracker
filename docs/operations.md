@@ -133,6 +133,9 @@ solo, así que los avisos hay que configurarlos.
 - **Concurrencia y timeout** acotados, para que una instancia no acumule trabajo indefinido.
 - **Flow control en la suscripción** de Pub/Sub, para que un bucle de reintentos no genere requests sin
   techo.
+- **Rate limiting en la aplicación** (Bucket4j) desde el v0: la API pública es el punto por donde
+  alguien podría consumir el cupo gratuito. Cloudflare lo haría mejor en el edge, pero suma un
+  componente que el v0 no necesita (ADR 0005).
 - **Cualquier producto de pago requiere un ADR** que justifique salir del tier gratuito. Sin ADR, no se
   habilita.
 
@@ -144,7 +147,7 @@ solo, así que los avisos hay que configurarlos.
 | Pub/Sub | USD 0 |
 | PostgreSQL (Neon gratis) | USD 0 |
 | LLM (centavos por correo) | USD 1 – 5 |
-| Cloudflare (DNS, WAF) | USD 0 |
+| Cloudflare (DNS, WAF) | USD 0 · opcional, fuera del v0 |
 
 Total: **USD 0 – 5/mes**, y el único costo real es el del modelo. Si el tier gratuito de GCP
 desapareciera, el reemplazo costaría USD 10–18/mes: eso es el techo de exposición, no el presupuesto.

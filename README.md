@@ -11,7 +11,7 @@ alertas con runbook. Cada decisión tiene su ADR para poder defenderla en voz al
 > documentación de arquitectura; el código entra en slices verticales con TDD.
 
 **Stack:** Java 25 (LTS) · Spring Boot 4.2 · PostgreSQL · Flyway · Spring AI 2.1 · Testcontainers ·
-Pub/Sub · Cloud Run · Cloudflare · GitHub Actions.
+Pub/Sub · Cloud Run · GitHub Actions.
 
 ---
 
