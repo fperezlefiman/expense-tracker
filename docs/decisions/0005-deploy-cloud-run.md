@@ -1,6 +1,6 @@
 # 0005 — Deploy en Cloud Run + Pub/Sub con OIDC
 
-**Estado:** propuesto · **Fecha:** 2026-11-23
+**Estado:** aceptado · **Fecha:** 2026-11-23
 
 ## Contexto
 
