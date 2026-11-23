@@ -48,6 +48,53 @@ o de prompt y correr evals contra el dataset antes de tocar nada.
 Runbook: revisar correos procesados y tokens por correo; si el promedio subió, buscar correos con
 adjuntos o HTML gigante. Si es volumen legítimo, ajustar el presupuesto, no apagar la extracción.
 
+## Logs y observabilidad
+
+Los logs son el rubro donde un v0 "gratis" empieza a cobrar sin que nadie toque infraestructura.
+
+### Cómo se cobra Cloud Logging
+
+| Eje | Qué incluye |
+|---|---|
+| **Ingesta** | ~50 GiB por proyecto por mes; lo que excede, ~USD 0,50/GiB |
+| **Retención** | 30 días incluidos en el bucket `_Default`; más tiempo, se cobra por GB-mes |
+| **Auditoría** | Actividad administrativa gratis; logs de acceso a datos, se cobran |
+
+En Cloud Run todo lo que la aplicación escribe a **stdout/stderr se ingesta automáticamente**: es
+opt-out, no opt-in.
+
+### Qué consume el cupo en la práctica
+
+No los logs de negocio, los del framework y la infraestructura:
+
+- **Health checks**: una línea por request cada pocos segundos, 24/7. El gasto más común y el más inútil.
+- **Arranques de JVM** con stack traces y warnings de Spring.
+- **Un log por push** con el payload completo, que además es PII.
+- **Bucles de reintento** que repiten el mismo error con stack trace.
+
+### Política del proyecto
+
+- **JSON estructurado a stdout**, niveles `INFO/WARN/ERROR`. `DEBUG` no existe en producción.
+- **Nunca PII en logs**: sin cuerpo, sin asunto, sin montos. Sí `messageId`, `account` seudonimizado,
+  resultado, latencia, tokens y costo. Es requisito del ADR 0007.
+- **Excluir health checks** del bucket por defecto con una exclusión en el sink:
+
+  ```bash
+  gcloud logging sinks update _Default \
+    --add-exclusion=name=skip-health-checks,filter='httpRequest.requestUrl:"/actuator/health"'
+  ```
+
+- **Retención 30 días**, sin extender.
+- **Logs para explicar, métricas para contar**: p95, costo por correo y tasa de fallo van como métricas
+  de Micrometer, no como líneas de log que después hay que contar caras.
+- **Alerta al 70 % del cupo de ingesta** (~35 GiB): detecta un defecto que infla el volumen, no el
+  crecimiento orgánico.
+
+### Lo que no se hace
+
+Exportar logs a BigQuery ni montar ELK. Logs Explorer más métricas de Cloud Monitoring alcanza; cada
+pieza extra es costo y superficie que defender en una entrevista.
+
 ## Costos y control de gasto
 
 **Regla del proyecto: no se gasta dinero.** El v0 tiene que correr dentro de lo gratuito, y si algo se
