@@ -16,6 +16,7 @@ flowchart TB
         WK["worker<br/>sin ingress"]
         API["API de resumen<br/>pública"]
     end
+    SCH["Cloud Scheduler<br/>cada 1 min"]
     subgraph Datos
         PG[("PostgreSQL")]
     end
@@ -24,10 +25,9 @@ flowchart TB
 
     GM -->|"watch"| PS
     PS -->|"push OIDC"| WH
-    WH --> PG
-    WH -->|"publica job"| PS
-    PS -->|"push OIDC"| WK
-    WK --> PG
+    WH -->|"inserta crudo"| PG
+    SCH -->|"POST /internal/extract (OIDC)"| WK
+    WK -->|"SKIP LOCKED"| PG
     WK -->|"LLM"| EXT["Spring AI"]
     CF1 --> API
     U --> CF1
@@ -42,13 +42,16 @@ sequenceDiagram
     participant P as Pub/Sub
     participant W as Webhook
     participant DB as PostgreSQL
+    participant S as Cloud Scheduler
     participant Q as Worker
     participant AI as LLM
 
     P->>W: POST /gmail/notifications
     W->>DB: insert raw_emails (on conflict do nothing)
     W-->>P: 200 (sin extracción)
-    Q->>DB: tomar pendientes (processed_at null, lock con expiración)
+    Note over P,W: si el insert falla, se responde 5xx y Pub/Sub reintenta
+    S->>Q: POST /internal/extract (cada 1 min)
+    Q->>DB: select ... for update skip locked
     Q->>AI: correo + schema esperado
     AI-->>Q: JSON del gasto
     alt válido

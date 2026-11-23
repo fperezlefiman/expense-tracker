@@ -23,8 +23,9 @@ flowchart LR
     W --> ID{"¿ya existe<br/>gmail_message?"}
     ID -->|"nuevo"| RAW[("raw_emails<br/>(jsonb)")]
     ID -->|"duplicado"| NOOP["200 · no-op"]
-    RAW -->|"encola"| Q[["Pub/Sub: jobs"]]
-    Q -->|"consume"| EX["ExpenseExtractor<br/>(Spring AI)"]
+    RAW -.->|"pendientes: SKIP LOCKED"| WK["Worker<br/>(Cloud Run, privado)"]
+    SCH["Cloud Scheduler<br/>cada 1 min (OIDC)"] -->|"POST /internal/extract"| WK
+    WK -->|"consume"| EX["ExpenseExtractor<br/>(Spring AI)"]
     EX --> VAL{"¿pasa las<br/>invariantes?"}
     VAL -->|"sí"| EXP[("expenses")]
     VAL -->|"no"| RETRY["pendiente<br/>+ métrica"]
@@ -40,6 +41,9 @@ Tres ideas sostienen el diseño:
    guardado, sin volver a pedirle nada a Gmail.
 3. **La idempotencia es una clave única** (`raw_emails.gmail_message` por cuenta), no un `if` en
    memoria.
+4. **La tabla es la cola.** Pub/Sub solo trae el aviso; el trabajo pendiente vive en `raw_emails` y el
+   worker lo toma con `SKIP LOCKED`. No hay dos registros del mismo trabajo que puedan desincronizarse
+   (ADR 0008).
 
 ## Decisiones
 
@@ -52,6 +56,7 @@ Tres ideas sostienen el diseño:
 | [0005](docs/decisions/0005-deploy-cloud-run.md) | Cloud Run + Pub/Sub con OIDC | El push ya vive en GCP; el endpoint queda privado |
 | [0006](docs/decisions/0006-multi-tenant-from-v1.md) | `account_id` desde V1 | Multi-tenant retroactivo es una migración de terror |
 | [0007](docs/decisions/0007-ingestion-resilience.md) | Ingesta resiliente | El watch vence a los 7 días y falla en silencio |
+| [0008](docs/decisions/0008-worker-triggered-by-scheduler.md) | Pub/Sub solo como transporte de entrada | La tabla es la cola: una sola fuente de verdad |
 
 ## Documentación
 

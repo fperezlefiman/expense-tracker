@@ -14,6 +14,7 @@ inmutables: una decisión no se edita, se reemplaza por un ADR nuevo que la supe
 | [0005](0005-deploy-cloud-run.md) | Deploy en Cloud Run + Pub/Sub con OIDC | propuesto | 2026-11-23 |
 | [0006](0006-multi-tenant-from-v1.md) | `account_id` desde la primera migración | aceptado | 2026-11-23 |
 | [0007](0007-ingestion-resilience.md) | Resiliencia de la ingesta: watch, reintentos, backfill | aceptado | 2026-11-23 |
+| [0008](0008-worker-triggered-by-scheduler.md) | Pub/Sub es transporte de entrada, no cola de trabajos | aceptado | 2026-11-23 |
 
 ## Convenciones
 
