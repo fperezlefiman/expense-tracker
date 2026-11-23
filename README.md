@@ -61,12 +61,14 @@ Tres ideas sostienen el diseño:
 | [0010](docs/decisions/0010-api-authentication.md) | API key por cuenta | Sin auth, el rate limiting protege el cupo, no los datos |
 | [0011](docs/decisions/0011-dedupe-survives-purge.md) | El gasto guarda su `gmail_message` | La unicidad no puede depender de una fila que se purga |
 | [0012](docs/decisions/0012-quota-enforcement.md) | La cuota bloquea la extracción, no la ingesta | Un correo recibido no se descarta nunca |
+| [0013](docs/decisions/0013-categories-and-locale.md) | Categorías del usuario, moneda e idioma por cuenta | La home es el gasto del mes por categoría: el texto libre la rompe |
 
 ## Documentación
 
 - [`docs/architecture.md`](docs/architecture.md) — contexto, secuencia de un correo, modelo de datos.
 - [`docs/decisions/`](docs/decisions/) — ADRs, uno por decisión, con estado.
 - [`docs/operations.md`](docs/operations.md) — deploy, alertas y runbooks, costos, límites de Google.
+- [`docs/ui.md`](docs/ui.md) — qué se muestra: home por categoría, estados y contrato con el backend.
 - [`docs/evals.md`](docs/evals.md) — dataset, métrica y resultados medidos.
 
 ## Cómo se corre

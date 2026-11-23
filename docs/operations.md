@@ -32,6 +32,20 @@ Rollback: se vuelve a la imagen anterior de los servicios. Las migraciones ya ap
 - Credenciales de Cloud Run vía service account; nada de llaves estáticas en el repositorio.
 - Llave del proveedor de LLM en Secret Manager, inyectada en runtime.
 
+## OAuth con Google y tokens
+
+- **La app va en estado Producción, sin verificar.** No es un atajo sucio: es la única forma de tener
+  `gmail.readonly` sin evaluación CASA. Queda limitada a 100 usuarios y Google muestra una pantalla de
+  "app no verificada" que el usuario acepta una vez.
+- **No se usa el estado Testing.** En Testing los refresh tokens **caducan a los 7 días**: la ingesta se
+  detendría sola cada semana, en silencio. Es exactamente el modo de falla que el ADR 0007 quiere
+  evitar, y convertirlo en el estado normal sería un error de operación.
+- El refresh token se guarda **cifrado** por cuenta y se usa solo en el proceso de ingesta.
+- **Revocación**: si el usuario revoca el acceso desde su cuenta de Google, el primer refresh falla con
+  `invalid_grant`. El sistema debe marcar la cuenta como `needs_reauth`, dejar de reintentar en bucle y
+  avisar en la interfaz con una acción concreta: reconectar.
+- Reautorizar es idempotente: el flujo reemplaza el token de la cuenta existente, no crea otra.
+
 ## Alertas
 
 Todas sobre **síntoma, no sobre causa**, y todas en un solo lugar: una alerta que vive en tres
@@ -52,11 +66,16 @@ secciones del documento es una alerta que se duplica en la consola.
 Además de las alertas: **revisión manual de la facturación el día 1 de cada mes**, cinco minutos,
 aunque marque USD 0.
 
+**La cuota (ADR 0012) está especificada pero no activa en el v0**: con un solo usuario que además es el
+dueño del proyecto, el límite es él. La decisión queda escrita para el día que entre un segundo usuario,
+no borrada.
+
 ### Runbooks
 
-**1. Silencio de ingesta.** Revisar el `watch` en Gmail (`users.getProfile` y fecha de expiración
-guardada) → si venció, renovar; si no, revisar la suscripción de Pub/Sub y la última ejecución del
-webhook.
+**1. Silencio de ingesta.** Tres causas, en este orden: el `watch` de Gmail venció (renovar);
+la suscripción de Pub/Sub está mal o el webhook falló (revisar la última ejecución); o el **refresh token
+de Google fue revocado** (`invalid_grant` en el log de ingesta → marcar `needs_reauth` y pedir
+reconexión).
 
 **2. Pendiente viejo.** Mirar `attempts`, `next_attempt_at` y `locked_at`; si el lock está vencido, el
 worker murió → logs del worker; si todos los pendientes tienen error del LLM, revisar cuota y proveedor.

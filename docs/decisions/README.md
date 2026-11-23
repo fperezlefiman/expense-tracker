@@ -22,6 +22,7 @@ Agrupado por tema: quien llega busca el área, no el número.
 | [0006](0006-multi-tenant-from-v1.md) | `account_id` desde la primera migración | aceptado | `docs/architecture.md` |
 | [0009](0009-indexes-and-partitioning.md) | Índices parciales ahora, particiones diferidas | aceptado | `docs/architecture.md` (índices y retención) |
 | [0011](0011-dedupe-survives-purge.md) | La deduplicación de gastos sobrevive a la purga | aceptado | `docs/architecture.md` (ER) |
+| [0013](0013-categories-and-locale.md) | Categorías del usuario, moneda e idioma por cuenta | aceptado | `docs/architecture.md` (ER, índices), `docs/ui.md` |
 
 ### Ingesta, extracción y cuotas
 

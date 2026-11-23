@@ -68,6 +68,8 @@ erDiagram
     ACCOUNTS ||--o{ RAW_EMAILS : owns
     ACCOUNTS ||--o{ ACCOUNT_USAGE : "cuenta por período"
     ACCOUNTS ||--o{ API_KEYS : "autentica"
+    ACCOUNTS ||--o{ CATEGORIES : define
+    CATEGORIES ||--o{ EXPENSES : clasifica
     RAW_EMAILS ||--o| EXPENSES : produces
 
     ACCOUNTS {
@@ -75,7 +77,16 @@ erDiagram
         text email UK
         text plan
         int monthly_email_quota
+        char currency "ISO-4217, ej. CLP"
+        text locale "ej. es-CL"
         timestamptz created_at
+    }
+    CATEGORIES {
+        uuid id PK
+        uuid account_id FK
+        text name "único por cuenta, sin distinguir mayúsculas"
+        text color
+        timestamptz archived_at "null = activa"
     }
     RAW_EMAILS {
         uuid id PK
@@ -99,7 +110,7 @@ erDiagram
         char currency "ISO-4217"
         date occurred_on
         text description
-        text category
+        uuid category_id FK "null = sin categoría (ADR 0013)"
     }
     ACCOUNT_USAGE {
         uuid account_id PK
@@ -150,6 +161,12 @@ create unique index expenses_raw_email_uk on expenses (raw_email_id)
 
 -- resumen mensual por cuenta
 create index expenses_account_date_idx on expenses (account_id, occurred_on desc);
+
+-- la consulta de la home: gasto del mes agrupado por categoría (ADR 0013)
+create index expenses_account_category_idx on expenses (account_id, category_id, occurred_on desc);
+
+-- categorías activas de una cuenta, sin duplicados por mayúsculas
+create unique index categories_name_uk on categories (account_id, lower(name));
 ```
 
 **Por qué parcial y no completo:** un índice sobre `processed_at` se degrada porque casi todas las filas
