@@ -1,16 +1,17 @@
 # expense-tracker
 
-Backend de un tracker personal de gastos que se alimenta solo: lee los correos de Gmail, extrae el
-gasto con un LLM, lo guarda normalizado en PostgreSQL y lo expone en una API de resumen.
+Backend de un tracker de gastos que se alimenta solo: recibe los push de Gmail, extrae el gasto con
+un LLM, lo guarda normalizado en PostgreSQL y lo expone en una API de resumen.
 
-El objetivo no es "anotar gastos". Es tener el sistema completo que hoy piden las ofertas de
-software con IA en producción: **webhooks idempotentes, extracción no determinística validada,
-reintentos, evals medidas y costo por correo**. Cada decisión de diseño está escrita como ADR, para
-poder defenderla en voz alta.
+Está diseñado como un sistema de producción, no como un proyecto personal: webhooks idempotentes,
+extracción no determinística validada, reintentos con dead letter, evals medidas, costo por correo y
+alertas con runbook. Cada decisión tiene su ADR para poder defenderla en voz alta.
 
-> **Estado:** diseño. Todavía no hay código; este documento es el contrato antes de escribirlo.
+> **Estado:** diseño cerrado, implementación pendiente. Este repositorio contiene por ahora la
+> documentación de arquitectura; el código entra en slices verticales con TDD.
 
-**Stack:** Java 25 (LTS) · Spring Boot 4.2 · PostgreSQL 18 · Flyway · Spring AI 2.1 · Testcontainers · GitHub Actions.
+**Stack:** Java 25 (LTS) · Spring Boot 4.2 · PostgreSQL · Flyway · Spring AI 2.1 · Testcontainers ·
+Pub/Sub · Cloud Run · Cloudflare · GitHub Actions.
 
 ---
 
@@ -18,98 +19,54 @@ poder defenderla en voz alta.
 
 ```mermaid
 flowchart LR
-    G[Gmail] -->|"push via Pub/Sub"| W["Webhook<br/>(Spring MVC)"]
+    G[Gmail] -->|"push via Pub/Sub<br/>OIDC"| W["Webhook<br/>(Cloud Run, privado)"]
     W --> ID{"¿ya existe<br/>gmail_message?"}
     ID -->|"nuevo"| RAW[("raw_emails<br/>(jsonb)")]
     ID -->|"duplicado"| NOOP["200 · no-op"]
-    RAW -->|"encola"| Q[["Cola de trabajos"]]
+    RAW -->|"encola"| Q[["Pub/Sub: jobs"]]
     Q -->|"consume"| EX["ExpenseExtractor<br/>(Spring AI)"]
     EX --> VAL{"¿pasa las<br/>invariantes?"}
     VAL -->|"sí"| EXP[("expenses")]
-    VAL -->|"no"| RETRY["queda pendiente<br/>+ métrica"]
+    VAL -->|"no"| RETRY["pendiente<br/>+ métrica"]
     EXP -->|"lee"| API["API de resumen"]
 ```
 
-Tres ideas sostienen el diagrama:
+Tres ideas sostienen el diseño:
 
-1. **El webhook no piensa.** Responde `200` apenas guarda el correo crudo. Pub/Sub reintenta todo lo
-   que no sea `2xx`, así que un LLM adentro del request es una garantía de duplicados y timeouts.
-2. **El correo crudo se guarda antes de interpretarlo.** Un cambio de prompt o de modelo se
-   reprocesa sobre lo guardado, sin volver a pedirle nada a Google.
-3. **La idempotencia es una clave única,** no un `if` en memoria: `raw_emails.gmail_message` es
-   `unique` y el insert es `on conflict do nothing`.
+1. **El webhook no piensa.** Responde `200` solo después de guardar el correo crudo; `5xx` cuando no
+   puede, para que Pub/Sub reintente. Un LLM dentro del request es una garantía de timeouts y
+   duplicados.
+2. **El crudo se guarda antes de interpretarlo.** Un cambio de prompt se reprocesa sobre lo
+   guardado, sin volver a pedirle nada a Gmail.
+3. **La idempotencia es una clave única** (`raw_emails.gmail_message` por cuenta), no un `if` en
+   memoria.
 
-### Flujo de un correo
+## Decisiones
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant P as Pub/Sub
-    participant W as Webhook
-    participant DB as PostgreSQL
-    participant Q as Worker
-    participant AI as LLM
+| # | Decisión | Por qué |
+|---|---|---|
+| [0001](docs/decisions/0001-java-25-spring-boot-4.md) | Java 25 + Spring Boot 4.2 | LTS vigente y el mayor volumen de ofertas backend en Chile |
+| [0002](docs/decisions/0002-flyway-not-liquibase.md) | Flyway con `ddl-auto: validate` | El esquema es SQL revisable; Hibernate solo valida |
+| [0003](docs/decisions/0003-raw-emails-and-idempotency.md) | Correo crudo antes de extraer | Reprocesable y sin pérdida de datos |
+| [0004](docs/decisions/0004-llm-behind-expense-extractor.md) | LLM detrás de `ExpenseExtractor` | Sin lock-in, testeable con un fake |
+| [0005](docs/decisions/0005-deploy-cloud-run.md) | Cloud Run + Pub/Sub con OIDC | El push ya vive en GCP; el endpoint queda privado |
+| [0006](docs/decisions/0006-multi-tenant-from-v1.md) | `account_id` desde V1 | Multi-tenant retroactivo es una migración de terror |
+| [0007](docs/decisions/0007-ingestion-resilience.md) | Ingesta resiliente | El watch vence a los 7 días y falla en silencio |
 
-    P->>W: POST /gmail/notifications
-    W->>DB: insert raw_emails (on conflict do nothing)
-    W-->>P: 200 (rápido, sin extracción)
-    Q->>DB: tomar pendientes (processed_at null)
-    Q->>AI: correo + schema esperado
-    AI-->>Q: JSON del gasto
-    alt válido
-        Q->>DB: insert expenses + processed_at
-    else inválido o timeout
-        Q->>DB: contador de intentos++ , sigue pendiente
-    end
-```
+## Documentación
 
-### Modelo de datos
+- [`docs/architecture.md`](docs/architecture.md) — contexto, secuencia de un correo, modelo de datos.
+- [`docs/decisions/`](docs/decisions/) — ADRs, uno por decisión, con estado.
+- [`docs/operations.md`](docs/operations.md) — deploy, alertas y runbooks, costos, límites de Google.
+- [`docs/evals.md`](docs/evals.md) — dataset, métrica y resultados medidos.
 
-```mermaid
-erDiagram
-    RAW_EMAILS ||--o| EXPENSES : produces
+## Cómo se corre
 
-    RAW_EMAILS {
-        uuid id PK
-        text gmail_message UK "id de Gmail, clave de idempotencia"
-        jsonb payload
-        timestamptz received_at
-        timestamptz processed_at "null = pendiente"
-        int attempts
-    }
-    EXPENSES {
-        uuid id PK
-        uuid raw_email_id FK
-        numeric amount
-        char currency "ISO-4217"
-        date occurred_on
-        text description
-        text category
-    }
-```
-
----
-
-## Decisiones de diseño
-
-| Decisión | Por qué |
-|---|---|
-| **Java 25 + Spring Boot 4.2** | Java/Spring es el mayor volumen de ofertas backend en Chile (158 vs 12 Kotlin en Computrabajo al 23-nov-2026) y Spring Boot 4.2 soporta la LTS vigente. |
-| **Flyway con `ddl-auto: validate`** | El esquema es SQL revisable en el PR. Hibernate solo valida: si el código y la base divergen, el arranque falla en vez de corromper datos. |
-| **Correo crudo antes de extraer** | Permite reprocesar y medir sin depender de Gmail; el fallo de extracción nunca pierde el dato. |
-| **`ExpenseExtractor` como puerto** | El LLM es la pieza no determinística: va detrás de una interfaz con implementación Spring AI, otra con SDK directo y un fake para tests sin red ni tokens. |
-| **Validación en tipos, no en el prompt** | Si el JSON no respeta las invariantes del dominio, no se escribe nada: se reintenta y se cuenta. |
-| **Evals con umbral en CI** | La única forma honesta de saber si un cambio de prompt mejora: mismo dataset, misma métrica, build rojo si baja. |
-
-## Cómo se mide (lo que lo hace "de producción")
-
-- **Precisión de extracción** sobre un set etiquetado de correos reales anonimizados: monto, moneda y
-  fecha correctos. Métrica publicada en el README, no en la cabeza del autor.
-- **Tasa de duplicados absorbidos** por la clave de idempotencia.
-- **Latencia p95 y costo por correo** (tokens in/out × precio del modelo), visibles en Actuator.
+Cuando exista el primer slice: `docker compose up -d` levanta PostgreSQL y `mvn spring-boot:run` la
+aplicación; `mvn verify` corre unitarios e integración (Testcontainers, requiere Docker).
 
 ## Fuera de alcance
 
-- Sincronización bancaria (otra integración, otro problema).
-- Multiusuario y autenticación de producto: es un tracker personal.
-- UI propia: la API de resumen es el entregable; un front, si aparece, va en otro repo.
+- Sincronización bancaria y conciliación de cartolas.
+- UI propia: el entregable es la API; un front iría en otro repositorio.
+- Facturación: el diseño deja lugar (`account_id`, cuotas por cuenta), pero no se implementa todavía.
