@@ -62,6 +62,8 @@ secciones del documento es una alerta que se duplica en la consola.
 | 7 | Instancias de Cloud Run | > 2 durante 10 min | *Container instance count* |
 | 8 | Requests del servicio | > 70 % del cupo (1,4M de 2M) | Cloud Monitoring |
 | 9 | Neon | > 70 % de storage (700 MB) o de cómputo | consola de Neon |
+| 10 | Correos en `needs_review` | > 5 acumulados | métrica del worker |
+| 11 | Rechazos del `MoneyGuard` | > 0 en 24 h | métrica del worker |
 
 Además de las alertas: **revisión manual de la facturación el día 1 de cada mes**, cinco minutos,
 aunque marque USD 0.
@@ -89,6 +91,14 @@ extracción.
 
 **6. Logs.** Buscar el `service` que más ingesta aporta en Logs Explorer; casi siempre es un health
 check o un bucle de reintento. Si es un bucle, arreglar la causa antes de agregar exclusiones.
+
+**10. `needs_review` acumulado.** Leer el `parser_id` y el motivo del rechazo: si todos vienen del mismo
+dominio, ese emisor cambió su plantilla → escribir la plantilla nueva con un fixture del correo real.
+Mientras tanto los correos están guardados, no perdidos.
+
+**11. Rechazo del `MoneyGuard`.** El modelo propuso un monto que no aparece en el texto. Revisar el
+crudo, comparar con lo que devolvió el modelo y agregar el caso al dataset de evals: el rechazo es el
+sistema funcionando, pero el caso es una laguna del prompt o de la plantilla.
 
 ## Logs y observabilidad
 

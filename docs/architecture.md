@@ -28,7 +28,13 @@ flowchart TB
     WH -->|"inserta crudo"| PG
     SCH -->|"POST /internal/extract (OIDC)"| WK
     WK -->|"SKIP LOCKED"| PG
-    WK -->|"LLM"| EXT["Spring AI"]
+    WK --> EXT["extracción"]
+    EXT --> TPL["plantilla por emisor<br/>(determinística)"]
+    EXT -.->|"sin plantilla"| LLM["LLM fallback<br/>(JSON Schema)"]
+    TPL --> GRD{"MoneyGuard"}
+    LLM --> GRD
+    GRD -->|"el monto existe en el cuerpo"| PG2[("gasto")]
+    GRD -->|"no coincide"| NRV["needs_review"]
     U -->|"API key"| API
     CF1 -.->|"opcional: dominio + WAF"| API
     API --> PG
@@ -69,6 +75,7 @@ erDiagram
     ACCOUNTS ||--o{ ACCOUNT_USAGE : "cuenta por período"
     ACCOUNTS ||--o{ API_KEYS : "autentica"
     ACCOUNTS ||--o{ CATEGORIES : define
+    ACCOUNTS ||--o{ MERCHANT_ALIASES : aprende
     CATEGORIES ||--o{ EXPENSES : clasifica
     RAW_EMAILS ||--o| EXPENSES : produces
 
@@ -87,6 +94,13 @@ erDiagram
         text name "único por cuenta, sin distinguir mayúsculas"
         text color
         timestamptz archived_at "null = activa"
+    }
+    MERCHANT_ALIASES {
+        uuid id PK
+        uuid account_id FK
+        text pattern "descriptor normalizado del emisor"
+        text clean_name "Uber Eats"
+        uuid category_id FK "categoría por defecto (ADR 0015)"
     }
     RAW_EMAILS {
         uuid id PK
@@ -111,6 +125,9 @@ erDiagram
         date occurred_on
         text description
         uuid category_id FK "null = sin categoría (ADR 0013)"
+        text origin "template | alias | llm | user (ADR 0015)"
+        text parser_id "qué plantilla lo resolvió, si hubo"
+        numeric confidence "no es una garantía: la garantía es el guard"
     }
     ACCOUNT_USAGE {
         uuid account_id PK
@@ -167,6 +184,9 @@ create index expenses_account_category_idx on expenses (account_id, category_id,
 
 -- categorías activas de una cuenta, sin duplicados por mayúsculas
 create unique index categories_name_uk on categories (account_id, lower(name));
+
+-- un alias por descriptor y cuenta: la segunda vez ya no llama al modelo (ADR 0015)
+create unique index merchant_aliases_pattern_uk on merchant_aliases (account_id, pattern);
 ```
 
 **Por qué parcial y no completo:** un índice sobre `processed_at` se degrada porque casi todas las filas

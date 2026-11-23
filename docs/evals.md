@@ -1,71 +1,76 @@
-# Evals de extracción
+# Evals de la extracción
 
-Un sistema con LLM sin evals no está en producción: está en demo. Este documento define el dataset,
-la métrica y cómo se publica el resultado.
+Un pipeline con LLM sin evals no está en producción: está en demo. Pero **no todo se mide con evals**:
+lo determinístico se testea, y solo lo que decide el modelo se evalúa. Mezclarlos encarece la medición y
+esconde los fallos detrás de un promedio.
+
+## Qué se mide con qué
+
+- **Monto, moneda y fecha por plantilla**: test unitario por emisor, coincidencia exacta. Es
+  determinístico: un test lo cubre al 100 %.
+- **Monto, moneda y fecha por fallback**: **invariante del `MoneyGuard`** — el número tiene que existir
+  literalmente en el cuerpo del correo (ADR 0014). Es una regla, no una probabilidad.
+- **`is_expense`**: eval, exactitud obligatoria.
+- **`merchant_name`**: eval, coincidencia normalizada.
+- **`category_id`**: eval, exacto contra la lista del usuario.
 
 ## Dataset
 
-- **Origen**: correos reales de confirmación de compra, **anonimizados** (sin remitente, sin números de
-  tarjeta, sin direcciones completas).
-- **Formato**: `evals/dataset/NNNN.json` con el correo de entrada y el gasto esperado:
+- **Origen**: correos reales de banco, tarjeta y tienda, **anonimizados** (sin remitente, sin nombre del
+  titular, sin últimos dígitos de tarjeta, sin dirección, sin RUT). Los montos y las fechas se mantienen:
+  son el objeto de la medición.
+- **Ubicación**: `evals/dataset/NNNN.json`, **commiteado en el repo**. Es la única forma de que el
+  umbral sea reproducible y de que un revisor vea contra qué se mide.
+- **Tamaño**: 40 casos como mínimo — al menos uno por emisor conocido y **ocho casos que NO son gastos**
+  (promoción, aviso de saldo, compra rechazada, transferencia recibida, recordatorio de cuota). El falso
+  positivo es el error más caro, así que se mide explícitamente.
 
-  ```json
-  {
-    "id": "0001",
-    "email": { "subject": "...", "body": "..." },
-    "expected": { "amount": "15990", "currency": "CLP", "occurred_on": "2026-11-20", "category": "supermercado" }
-  }
-  ```
-
-- **Tamaño objetivo**: 40 casos como mínimo para el primer umbral; cobertura de al menos cuatro
-  formatos de correo distintos y dos casos ambiguos a propósito (monto sin moneda, dos montos en el
-  mismo correo).
+```json
+{
+  "id": "0007",
+  "email": { "from_domain": "bancoejemplo.cl", "subject": "...", "body": "..." },
+  "has_template": true,
+  "expected": { "is_expense": true, "merchant_name": "Uber Eats", "category": "Restaurantes" }
+}
+```
 
 ## Métrica
 
-Por caso, se evalúan tres campos duros:
+- `is_expense`: exacto. **Un solo falso positivo invalida la corrida**; no se promedia con el resto.
+- `merchant_name`: igualdad tras normalizar (minúsculas, sin acentos, sin sufijos como `SPA` o `LTDA`).
+- `category_id`: exacto contra la lista del usuario del fixture.
 
-| Campo | Criterio | Peso |
-|---|---|---|
-| `amount` | igualdad exacta (normalizada a 2 decimales) | 0.5 |
-| `currency` | igualdad exacta (ISO-4217) | 0.2 |
-| `occurred_on` | igualdad exacta, tolerancia 0 días | 0.3 |
-
-**Score del caso** = suma de pesos de los campos correctos. **Score global** = promedio simple.
-
-`category` se reporta pero **no puntúa**: es clasificación abierta y castigarla escondería errores que
-sí importan.
+**Score global** = promedio simple sobre los casos con `is_expense` correcto. Un caso mal clasificado en
+`is_expense` cuenta 0 y además marca la corrida como fallida.
 
 ## Umbral
 
-- Línea base publicada: **score ≥ 0.80** y el workflow falla por debajo (gate en el PR, ver abajo).
-- Un cambio de prompt o de modelo que baje el score no entra, aunque "se vea mejor en un caso".
-- Los casos con score < 1.0 se listan en el reporte: la revisión es de los fallos, no del promedio.
+- **`is_expense` 100 %**: no es negociable, es corrupción de datos.
+- **Score ≥ 0.85** en `merchant_name` + `category` para mergear.
+- Los casos con score < 1.0 se listan en el reporte: se revisan los fallos, no el promedio.
 
 ## Cómo se ejecuta
 
-- Script de evals contra el dataset, usando el extractor real con el proveedor configurado.
-- **Gate en el PR con path filter**: el workflow corre solo cuando cambian los archivos que pueden
-  mover el score —`extractor/`, `prompts/`, el modelo configurado o el propio dataset—. Ahí sí bloquea
-  el merge. En un push que no toca nada de eso, no gasta tokens.
-- **Costo del gate**: ~40 casos por corrida, unos pocos miles de tokens; entra en el presupuesto.
-  Si algún día no entra, se reduce a un subconjunto de 12 casos de regresión, no se apaga el gate.
-- El resultado se guarda en `evals/results/YYYY-MM-DD-<commit>.json` y se resume acá abajo.
+- Script de evals contra el dataset, con el extractor real y el proveedor configurado.
+- **Gate en el PR con path filter**: corre cuando cambian las plantillas, los prompts, el modelo
+  configurado o el dataset. Ahí bloquea el merge; en un push que no toca nada de eso, no gasta tokens.
+- **Costo del gate**: ~40 casos y el modelo solo corre en los que no tienen plantilla — unos pocos miles
+  de tokens. Si algún día no entra en el presupuesto, se reduce a 12 casos de regresión; el gate no se
+  apaga.
+- El resultado se guarda en `evals/results/YYYY-MM-DD-<commit>.json` y se resume abajo.
 
-## Dónde vive el dataset
+## Métricas de producción (no bloquean un merge)
 
-- **Commiteado en el repo**, en `evals/dataset/`: es la única forma de que el umbral sea reproducible y
-  de que un revisor vea contra qué se mide.
-- **Sin PII, y verificado antes de cada commit**: sin remitente, sin nombre del titular, sin últimos
-  dígitos de tarjeta, sin dirección completa, sin RUT. Los montos y las fechas se mantienen: son el
-  objeto de la medición.
-- Un caso nuevo entra por PR con la misma revisión que el código. Si un caso parece real, se anonimiza
-  hasta que no lo sea.
+- **Reparto por camino**: % resuelto por plantilla, por fallback y por alias.
+- **Tasa de `needs_review`**: si sube, un emisor cambió su plantilla.
+- **Rechazos del `MoneyGuard`**: cuántas veces el modelo propuso un monto que no estaba en el texto. Es
+  la métrica de alucinaciones atajadas, y más honesta que cualquier score de confianza.
+- **Precisión de categoría por `origin`**: cuánto acierta el modelo y cuánto el alias (ADR 0015).
 
 ## Resultados
 
-| Fecha | Commit | Modelo | Score | Costo | Notas |
-|---|---|---|---|---|---|
-| — | — | — | — | — | pendiente: implementación del extractor |
+| Fecha | Commit | Modelo | Score semántico | `is_expense` | Costo | Notas |
+|---|---|---|---|---|---|---|
+| — | — | — | — | — | — | pendiente: implementación del extractor |
 
 > Regla: un número sin fecha y sin commit no es un resultado, es una anécdota.

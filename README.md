@@ -1,11 +1,12 @@
 # expense-tracker
 
-Backend de un tracker de gastos que se alimenta solo: recibe los push de Gmail, extrae el gasto con
-un LLM, lo guarda normalizado en PostgreSQL y lo expone en una API de resumen.
+Backend de un tracker de gastos que se alimenta solo: recibe los push de Gmail, extrae el gasto,
+lo guarda normalizado en PostgreSQL y lo expone en una API de resumen.
 
 Está diseñado como un sistema de producción, no como un proyecto personal: webhooks idempotentes,
-extracción no determinística validada, reintentos con dead letter, evals medidas, costo por correo y
-alertas con runbook. Cada decisión tiene su ADR para poder defenderla en voz alta.
+extracción determinística por plantilla con un LLM como fallback, y un guard que impide que el modelo
+invente un monto. Reintentos con dead letter, evals medidas sobre lo que el modelo decide, costo por
+correo y alertas con runbook. Cada decisión tiene su ADR para poder defenderla en voz alta.
 
 > **Estado:** diseño cerrado, implementación pendiente. Este repositorio contiene por ahora la
 > documentación de arquitectura; el código entra en slices verticales con TDD.
@@ -44,6 +45,9 @@ Tres ideas sostienen el diseño:
 4. **La tabla es la cola.** Pub/Sub solo trae el aviso; el trabajo pendiente vive en `raw_emails` y el
    worker lo toma con `SKIP LOCKED`. No hay dos registros del mismo trabajo que puedan desincronizarse
    (ADR 0008).
+5. **El dinero no lo decide el modelo.** Las plantillas resuelven el formato conocido; el LLM entra solo
+   cuando no hay plantilla, y un `MoneyGuard` exige que el monto aparezca literalmente en el correo. Si
+   no aparece, el gasto no se crea: queda en revisión (ADR 0014).
 
 ## Decisiones
 
@@ -62,6 +66,8 @@ Tres ideas sostienen el diseño:
 | [0011](docs/decisions/0011-dedupe-survives-purge.md) | El gasto guarda su `gmail_message` | La unicidad no puede depender de una fila que se purga |
 | [0012](docs/decisions/0012-quota-enforcement.md) | La cuota bloquea la extracción, no la ingesta | Un correo recibido no se descarta nunca |
 | [0013](docs/decisions/0013-categories-and-locale.md) | Categorías del usuario, moneda e idioma por cuenta | La home es el gasto del mes por categoría: el texto libre la rompe |
+| [0014](docs/decisions/0014-templates-first-llm-fallback.md) | Plantillas primero, LLM como fallback, monto validado | Un monto inventado es indistinguible de uno real |
+| [0015](docs/decisions/0015-auditable-enrichment.md) | Enriquecimiento con `origin` auditable | Sin saber quién decidió, no hay forma de medir |
 
 ## Documentación
 

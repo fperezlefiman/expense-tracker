@@ -63,6 +63,19 @@ Acciones: cambiar categoría, corregir monto o descripción, descartar.
 | Categoría archivada | Se muestra en gris con la etiqueta `archivada`; acumula igual |
 | Correo purgado | `correo original eliminado por retención` en el detalle |
 
+## Correos que no se pudieron leer
+
+Un estado propio, porque es donde el sistema demuestra que no miente.
+
+- Lista de correos en `needs_review`, con el motivo en lenguaje llano: *"no encontré el monto"*,
+  *"el banco no está reconocido"*, *"el modelo propuso un monto que no aparece en el correo"*.
+- Cada ítem muestra el asunto, la fecha y el monto candidato **si el guard lo aceptó**; si no, no se
+  muestra ningún monto. Nunca un número con signo de duda.
+- Acción: abrir el correo original, escribir el gasto a mano y confirmar. Eso crea el gasto con
+  `origin = user`.
+- Si el motivo se repite para el mismo remitente, se ofrece **crear la plantilla de ese banco**, que es
+  la acción que apaga el problema de raíz.
+
 ## Del backend
 
 - `GET /summary?period=YYYY-MM` → total por moneda, variación, y por categoría: `id`, `name`,

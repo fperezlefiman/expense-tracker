@@ -32,6 +32,8 @@ Agrupado por tema: quien llega busca el área, no el número.
 | [0007](0007-ingestion-resilience.md) | Resiliencia de la ingesta: watch, reintentos, backfill | aceptado | `docs/operations.md` (runbooks) |
 | [0008](0008-worker-triggered-by-scheduler.md) | Pub/Sub es transporte de entrada, no cola de trabajos | aceptado | `docs/architecture.md` (secuencia) |
 | [0012](0012-quota-enforcement.md) | Punto de aplicación de la cuota | aceptado | `docs/operations.md` (alertas) |
+| [0014](0014-templates-first-llm-fallback.md) | Plantillas primero, LLM como fallback, monto validado | aceptado | `docs/architecture.md` (flujo), `docs/evals.md` |
+| [0015](0015-auditable-enrichment.md) | Enriquecimiento semántico auditable (`origin`) | aceptado | `docs/architecture.md` (ER), `docs/ui.md` |
 
 ### API, deploy y acceso
 
