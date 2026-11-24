@@ -8,7 +8,7 @@ extracción determinística por plantilla con un LLM como fallback, y un guard q
 invente un monto. Reintentos con dead letter, evals medidas sobre lo que el modelo decide, costo por
 correo y alertas con runbook. Cada decisión tiene su ADR para poder defenderla en voz alta.
 
-> **Estado:** Fase 1 implementada — webhook idempotente, 7 tests verdes y p95 medido. Las siguientes fases
+> **Estado:** Fase 1 implementada — webhook idempotente, 9 tests verdes y p95 medido. Las siguientes fases
 > entran por incrementos según [`docs/roadmap.md`](docs/roadmap.md); cada una cierra su gate antes de abrir
 > la próxima.
 
@@ -22,8 +22,8 @@ Pub/Sub · Cloud Run · GitHub Actions.
 ```mermaid
 flowchart LR
     G[Gmail] -->|"push via Pub/Sub<br/>OIDC"| W["Webhook<br/>(Cloud Run, privado)"]
-    W --> ID{"¿ya existe<br/>gmail_message?"}
-    ID -->|"nuevo"| RAW[("raw_emails<br/>(jsonb)")]
+    W --> ID{"¿ya existe<br/>(cuenta, kind, historyId)?"}
+    ID -->|"nuevo"| RAW[("raw_documents<br/>(jsonb)")]
     ID -->|"duplicado"| NOOP["200 · no-op"]
     RAW -.->|"pendientes: SKIP LOCKED"| WK["Worker<br/>(Cloud Run, privado)"]
     SCH["Cloud Scheduler<br/>cada 1 min (OIDC)"] -->|"POST /internal/extract"| WK
@@ -41,9 +41,10 @@ Tres ideas sostienen el diseño:
    duplicados.
 2. **El crudo se guarda antes de interpretarlo.** Un cambio de prompt se reprocesa sobre lo
    guardado, sin volver a pedirle nada a Gmail.
-3. **La idempotencia es una clave única** (`raw_emails.gmail_message` por cuenta), no un `if` en
-   memoria.
-4. **La tabla es la cola.** Pub/Sub solo trae el aviso; el trabajo pendiente vive en `raw_emails` y el
+3. **La idempotencia es una clave única** (`raw_documents`: `(account_id, kind, source_ref)`, con
+   `source_ref = historyId`), no un `if` en memoria. Se llavea por `historyId` y no por el `messageId`
+   de Pub/Sub: dos avisos distintos del mismo cambio del buzón tienen que colapsar en una fila.
+4. **La tabla es la cola.** Pub/Sub solo trae el aviso; el trabajo pendiente vive en `raw_documents` y el
    worker lo toma con `SKIP LOCKED`. No hay dos registros del mismo trabajo que puedan desincronizarse
    (ADR 0008).
 5. **El dinero no lo decide el modelo.** Las plantillas resuelven el formato conocido; el LLM entra solo
@@ -62,9 +63,9 @@ Tres ideas sostienen el diseño:
 | [0006](docs/decisions/0006-multi-tenant-from-v1.md) | `account_id` desde V1 | Multi-tenant retroactivo es una migración de terror |
 | [0007](docs/decisions/0007-ingestion-resilience.md) | Ingesta resiliente | El watch vence a los 7 días y falla en silencio |
 | [0008](docs/decisions/0008-worker-triggered-by-scheduler.md) | Pub/Sub solo como transporte de entrada | La tabla es la cola: una sola fuente de verdad |
-| [0009](docs/decisions/0009-indexes-and-partitioning.md) | Índices parciales, particiones diferidas | Particionar rompería la unicidad de `gmail_message` |
+| [0009](docs/decisions/0009-indexes-and-partitioning.md) | Índices parciales, particiones diferidas | Particionar rompería la unicidad de `(account_id, kind, source_ref)` |
 | [0010](docs/decisions/0010-api-authentication.md) | API key por cuenta | Sin auth, el rate limiting protege el cupo, no los datos |
-| [0011](docs/decisions/0011-dedupe-survives-purge.md) | El gasto guarda su `gmail_message` | La unicidad no puede depender de una fila que se purga |
+| [0011](docs/decisions/0011-dedupe-survives-purge.md) | El gasto guarda su `source_ref` | La unicidad no puede depender de una fila que se purga |
 | [0012](docs/decisions/0012-quota-enforcement.md) | La cuota bloquea la extracción, no la ingesta | Un correo recibido no se descarta nunca |
 | [0013](docs/decisions/0013-categories-and-locale.md) | Categorías del usuario, moneda e idioma por cuenta | La home es el gasto del mes por categoría: el texto libre la rompe |
 | [0014](docs/decisions/0014-templates-first-llm-fallback.md) | Plantillas primero, LLM como fallback, monto validado | Un monto inventado es indistinguible de uno real |
@@ -91,18 +92,21 @@ mvn verify                   # tests + integración (Testcontainers, requiere Do
 ```
 
 El webhook escucha en `POST /gmail/notifications` y **exige un token OIDC de Google** con la audiencia
-`PUBSUB_AUDIENCE` y el email `PUBSUB_SERVICE_ACCOUNT`. Sin esos dos valores correctos devuelve `401`.
+`PUBSUB_AUDIENCE` y el email `PUBSUB_SERVICE_ACCOUNT`. El token tiene que estar vigente, venir del emisor
+de Google y traer esa audiencia y ese email: si falla cualquiera de las cuatro cosas, devuelve `401`.
+Las dos variables son **obligatorias**: sin ellas la aplicación no arranca (`PUBSUB_AUDIENCE=… mvn spring-boot:run`).
 
 ## Números medidos
 
 | Qué | Valor (3 corridas) | Cómo |
 |---|---|---|
-| p50 del webhook | 66–93 ms | 50 concurrentes × 10 envíos, Postgres en Docker local |
-| p95 del webhook | **393–631 ms** | mismo gate; dominado por commits concurrentes con el pool por defecto |
+| p50 del webhook | 10–18 ms | 10 concurrentes × 10 envíos + 50 de calentamiento, Postgres local |
+| p95 del webhook | **44–58 ms** | mismo gate, p95 < 150 ms en `IngestLatencyTest` |
 
-Medido en `IngestLatencyTest`. **No es el número de Cloud Run**: ahí se suma el salto de red, pero también
-hay pool gestionado y disco distinto. El valor de la cifra es que es reproducible y que cualquier
-regresión aparece en CI.
+Medido en `IngestLatencyTest`, **después** del calentamiento: sin él el p95 lo dominaba el JIT y variaba
+entre 190 y 460 ms con el mismo binario, así que no medía el webhook sino la máquina. **No es el número de
+Cloud Run**: ahí se suma el salto de red, pero también hay pool gestionado y disco distinto. El valor de la
+cifra es que es reproducible y que cualquier regresión aparece en CI.
 
 ## Fuera de alcance
 

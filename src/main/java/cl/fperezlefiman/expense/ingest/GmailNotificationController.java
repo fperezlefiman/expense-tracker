@@ -62,7 +62,9 @@ public class GmailNotificationController {
             return ResponseEntity.ok().build();
         }
 
-        repository.insertNotification(accountId.get(), messageId, payload.toString());
+        // Keyed by historyId, not by the Pub/Sub messageId: a duplicated delivery and a re-notification
+        // of the same mailbox change must collapse into one row. See ADR 0003.
+        repository.insertNotification(accountId.get(), historyId, payload.toString());
         return ResponseEntity.ok().build();
     }
 

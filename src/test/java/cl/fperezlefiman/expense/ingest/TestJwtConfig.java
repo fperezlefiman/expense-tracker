@@ -1,5 +1,6 @@
 package cl.fperezlefiman.expense.ingest;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,13 +9,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 
+import cl.fperezlefiman.expense.security.SecurityConfig;
+
 /**
- * Replaces Google's JWKS decoder in tests: no network, but the same validator runs, so a token with a
- * wrong audience must still be rejected.
+ * Replaces Google's JWKS decoder in tests: no network, but the same validator chain runs, so a token with
+ * a wrong audience or an expiry in the past must still be rejected.
  */
 @TestConfiguration
 public class TestJwtConfig {
@@ -23,10 +27,15 @@ public class TestJwtConfig {
     @Primary
     JwtDecoder testJwtDecoder(@Value("${app.pubsub.audience}") String audience,
                               @Value("${app.pubsub.service-account}") String serviceAccount) {
-        PubSubTokenValidator validator = new PubSubTokenValidator(audience, serviceAccount);
+        OAuth2TokenValidator<Jwt> validator = SecurityConfig.pubSubValidator(audience, serviceAccount);
 
         return token -> {
-            if (!token.startsWith("good") && !token.equals("foreign-audience")) {
+            Instant expiresAt;
+            if (token.equals("expired")) {
+                expiresAt = Instant.now().minusSeconds(7200);
+            } else if (token.startsWith("good") || token.equals("foreign-audience")) {
+                expiresAt = Instant.now().plusSeconds(600);
+            } else {
                 throw new BadJwtException("unrecognised test token");
             }
             Map<String, Object> claims = new HashMap<>();
@@ -37,6 +46,7 @@ public class TestJwtConfig {
             Jwt jwt = Jwt.withTokenValue(token)
                     .header("alg", "RS256")
                     .claims(c -> c.putAll(claims))
+                    .expiresAt(expiresAt)
                     .build();
 
             var result = validator.validate(jwt);

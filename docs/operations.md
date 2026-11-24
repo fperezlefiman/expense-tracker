@@ -31,6 +31,9 @@ Rollback: se vuelve a la imagen anterior de los servicios. Las migraciones ya ap
 - Credenciales de Gmail (refresh token) por cuenta, cifradas en base.
 - Credenciales de Cloud Run vía service account; nada de llaves estáticas en el repositorio.
 - Llave del proveedor de LLM en Secret Manager, inyectada en runtime.
+- **`PUBSUB_AUDIENCE` y `PUBSUB_SERVICE_ACCOUNT` en cada servicio que valide el push.** No tienen valor por
+  defecto a propósito: si faltan, el contenedor no arranca (`Could not resolve placeholder`) en vez de
+  levantar y rechazar todos los tokens reales.
 
 ## OAuth con Google y tokens
 
@@ -54,7 +57,7 @@ secciones del documento es una alerta que se duplica en la consola.
 | # | Alerta | Umbral | Fuente |
 |---|---|---|---|
 | 1 | Silencio de ingesta | 0 eventos en 12 h | métrica propia del webhook |
-| 2 | Pendiente viejo | fila más antigua `processed_at is null` > 15 min | consulta sobre `raw_emails` |
+| 2 | Pendiente viejo | fila más antigua `processed_at is null` > 15 min | consulta sobre `raw_documents` |
 | 3 | Extracción fallida | > 20 % en 1 h | métrica del worker |
 | 4 | Gasto del LLM | > presupuesto mensual | `account_usage` |
 | 5 | Cuota de una cuenta | > 80 % de `monthly_email_quota` | `account_usage` |

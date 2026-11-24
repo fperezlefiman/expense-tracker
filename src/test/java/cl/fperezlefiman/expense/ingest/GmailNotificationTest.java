@@ -1,8 +1,6 @@
 package cl.fperezlefiman.expense.ingest;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.Map;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,12 +16,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import cl.fperezlefiman.expense.AbstractPostgresTest;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestJwtConfig.class)
-class GmailNotificationTest extends cl.fperezlefiman.expense.AbstractPostgresTest {
-
-    private static final String EMAIL = "me@example.com";
+class GmailNotificationTest extends AbstractPostgresTest {
 
     @Autowired
     MockMvc mvc;
@@ -66,6 +64,31 @@ class GmailNotificationTest extends cl.fperezlefiman.expense.AbstractPostgresTes
     }
 
     @Test
+    void twoNotificationsForTheSameHistoryStillStoreOneRow() throws Exception {
+        // Pub/Sub can announce the same mailbox change twice under different message ids.
+        for (String messageId : List.of("msg-1", "msg-2")) {
+            mvc.perform(post("/gmail/notifications")
+                            .header("Authorization", "Bearer good")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(push(messageId, "1000")))
+                    .andExpect(status().isOk());
+        }
+
+        assertThat(count()).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsExpiredTokenWithoutStoring() throws Exception {
+        mvc.perform(post("/gmail/notifications")
+                        .header("Authorization", "Bearer expired")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(push("msg-4", "1003")))
+                .andExpect(status().isUnauthorized());
+
+        assertThat(count()).isZero();
+    }
+
+    @Test
     void rejectsRequestWithoutToken() throws Exception {
         mvc.perform(post("/gmail/notifications")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -99,12 +122,5 @@ class GmailNotificationTest extends cl.fperezlefiman.expense.AbstractPostgresTes
 
     private long count() {
         return jdbc.sql("select count(*) from raw_documents").query(Long.class).single();
-    }
-
-    static String push(String messageId, String historyId) {
-        String json = "{\"emailAddress\":\"" + EMAIL + "\",\"historyId\":\"" + historyId + "\"}";
-        String data = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
-        return "{\"message\":{\"data\":\"" + data + "\",\"messageId\":\"" + messageId + "\"},"
-                + "\"subscription\":\"projects/p/subscriptions/s\"}";
     }
 }

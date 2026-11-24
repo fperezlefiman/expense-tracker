@@ -16,5 +16,6 @@ management:
 
 app:
   pubsub:
-    audience: ${PUBSUB_AUDIENCE:expense-tracker-ingest}
-    service-account: ${PUBSUB_SERVICE_ACCOUNT:pubsub-push@localhost.iam.gserviceaccount.com}
+    # No defaults on purpose: a missing value must fail at startup, not reject every real token.
+    audience: ${PUBSUB_AUDIENCE}
+    service-account: ${PUBSUB_SERVICE_ACCOUNT}

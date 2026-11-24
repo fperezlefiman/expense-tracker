@@ -2,6 +2,11 @@
 
 **Estado:** aceptado · **Fecha:** 2026-11-23
 
+> **Nota de nomenclatura (2026-11-23).** Este ADR es anterior al 0016. Donde acá dice `raw_emails` hoy se
+> lee `raw_documents`, y donde dice `gmail_message` se lee `source_ref`, con la clave única
+> `(account_id, kind, source_ref)` y `kind = 'notification'` para los avisos de Pub/Sub. La misma lectura
+> vale para los ADR 0006 a 0011, que siguen nombrando las tablas como estaban cuando se escribieron.
+
 ## Contexto
 
 Las notificaciones push de Gmail llegan vía Pub/Sub, que entrega **al menos una vez**: el mismo
