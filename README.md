@@ -8,8 +8,9 @@ extracción determinística por plantilla con un LLM como fallback, y un guard q
 invente un monto. Reintentos con dead letter, evals medidas sobre lo que el modelo decide, costo por
 correo y alertas con runbook. Cada decisión tiene su ADR para poder defenderla en voz alta.
 
-> **Estado:** diseño cerrado, implementación pendiente. Este repositorio contiene por ahora la
-> documentación de arquitectura; el código entra en slices verticales con TDD.
+> **Estado:** Fase 1 implementada — webhook idempotente, 7 tests verdes y p95 medido. Las siguientes fases
+> entran por incrementos según [`docs/roadmap.md`](docs/roadmap.md); cada una cierra su gate antes de abrir
+> la próxima.
 
 **Stack:** Java 25 (LTS) · Spring Boot 4.2 · PostgreSQL · Flyway · Spring AI 2.1 · Testcontainers ·
 Pub/Sub · Cloud Run · GitHub Actions.
