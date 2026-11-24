@@ -153,6 +153,13 @@ Notas que importan más que las columnas:
   worker reintente con backoff, respete la cuota (ADR 0012) y no bloquee la fila si muere.
 - `payload` en `jsonb` guarda el correo completo: es el insumo de la reprocesabilidad y de las evals.
 
+### Cómo evoluciona el modelo
+
+Este diagrama describe **el v0**: una sola fuente y un gasto por correo. Desde la Fase 4 el contenedor
+pasa a `raw_documents` con `kind` (`email`, `statement`, `receipt`, `image`), el gasto se vincula a varios
+documentos y cada campo tiene una fuente autoritativa (ADR 0016, `docs/roadmap.md`). No se adelanta acá
+para no documentar como hecho algo que todavía no está construido.
+
 ## Índices y retención
 
 Los índices no son decoración: cada uno existe porque hay una consulta que lo usa. Los que el flujo

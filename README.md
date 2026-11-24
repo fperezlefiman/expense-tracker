@@ -72,6 +72,7 @@ Tres ideas sostienen el diseño:
 ## Documentación
 
 - [`docs/architecture.md`](docs/architecture.md) — contexto, secuencia de un correo, modelo de datos.
+- [`docs/roadmap.md`](docs/roadmap.md) — incrementos por fase, con el gate de salida de cada una.
 - [`docs/decisions/`](docs/decisions/) — ADRs, uno por decisión, con estado.
 - [`docs/operations.md`](docs/operations.md) — deploy, alertas y runbooks, costos, límites de Google.
 - [`docs/ui.md`](docs/ui.md) — qué se muestra: home por categoría, estados y contrato con el backend.
