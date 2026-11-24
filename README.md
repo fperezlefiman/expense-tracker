@@ -75,6 +75,7 @@ Tres ideas sostienen el diseño:
 - [`docs/roadmap.md`](docs/roadmap.md) — incrementos por fase, con el gate de salida de cada una.
 - [`docs/decisions/`](docs/decisions/) — ADRs, uno por decisión, con estado.
 - [`docs/operations.md`](docs/operations.md) — deploy, alertas y runbooks, costos, límites de Google.
+- [`docs/privacy.md`](docs/privacy.md) — qué se guarda, para qué, hasta cuándo y quién lo trata.
 - [`docs/ui.md`](docs/ui.md) — qué se muestra: home por categoría, estados y contrato con el backend.
 - [`docs/evals.md`](docs/evals.md) — dataset, métrica y resultados medidos.
 

@@ -24,6 +24,7 @@ Agrupado por tema: quien llega busca el área, no el número.
 | [0011](0011-dedupe-survives-purge.md) | La deduplicación de gastos sobrevive a la purga | aceptado | `docs/architecture.md` (ER) |
 | [0013](0013-categories-and-locale.md) | Categorías del usuario, moneda e idioma por cuenta | aceptado | `docs/architecture.md` (ER, índices), `docs/ui.md` |
 | [0016](0016-multi-source-reconciliation.md) | Documentos genéricos y conciliación entre fuentes | propuesto | `docs/roadmap.md` (fases 4 y 5) |
+| [0017](0017-data-minimization.md) | Minimización, enmascarado y retención de documentos | aceptado | `docs/privacy.md`, `docs/architecture.md` (prefiltro) |
 
 ### Ingesta, extracción y cuotas
 

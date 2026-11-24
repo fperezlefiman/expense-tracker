@@ -64,6 +64,7 @@ secciones del documento es una alerta que se duplica en la consola.
 | 9 | Neon | > 70 % de storage (700 MB) o de cómputo | consola de Neon |
 | 10 | Correos en `needs_review` | > 5 acumulados | métrica del worker |
 | 11 | Rechazos del `MoneyGuard` | > 0 en 24 h | métrica del worker |
+| 12 | Ratio guardado/recibido | < 10 % de los avisos en 24 h | métrica del webhook |
 
 Además de las alertas: **revisión manual de la facturación el día 1 de cada mes**, cinco minutos,
 aunque marque USD 0.
@@ -99,6 +100,24 @@ Mientras tanto los correos están guardados, no perdidos.
 **11. Rechazo del `MoneyGuard`.** El modelo propuso un monto que no aparece en el texto. Revisar el
 crudo, comparar con lo que devolvió el modelo y agregar el caso al dataset de evals: el rechazo es el
 sistema funcionando, pero el caso es una laguna del prompt o de la plantilla.
+
+**12. Ratio guardado/recibido.** Si los avisos llegan pero casi ninguno pasa el prefiltro, o el filtro se
+rompió o cambió el formato de los asuntos. Revisar la lista de dominios y palabras: **un filtro roto
+pierde gastos sin ruido**, y es el fallo más silencioso del sistema (ADR 0017).
+
+## Retención y borrado
+
+- **Documento crudo y adjunto: 90 días.** Se purgan por lotes (`delete ... where received_at < now() -
+  interval '90 days' limit 5000` en bucle) para no bloquear.
+- **El hecho derivado se queda**: gasto, ítems, categoría y origen no dependen del documento. Si el crudo
+  se purga, `expenses.source_ref` se mantiene y el detalle lo dice en la interfaz.
+- **La purga se verifica con un conteo**, no con la confianza: el job registra cuántas filas borró y
+  cuántos objetos del bucket eliminó, y los números se comparan con lo que había.
+- **Bucket**: ciclo de vida a 90 días configurado en el propio bucket, para que el borrado no dependa de
+  que la aplicación se ejecute.
+- **Logs**: 30 días, sin cuerpo ni asunto.
+- **Cuenta**: el borrado elimina gastos, ítems, categorías, alias, documentos, adjuntos y token OAuth, y
+  queda registrado en el log.
 
 ## Logs y observabilidad
 

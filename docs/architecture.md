@@ -67,6 +67,20 @@ sequenceDiagram
     end
 ```
 
+### Prefiltro de correos
+
+El push avisa de **cada** correo del buzón, así que el sistema elige qué mirar antes de descargar nada
+(ADR 0017):
+
+1. Del aviso se pide **solo cabeceras** (`format=metadata`): remitente y asunto. Sin cuerpo.
+2. Deciden reglas: dominios de bancos, tarjetas y comercios conocidos, más palabras de transacción en el
+   asunto ("compra", "cargo", "boleta", "factura", "pago").
+3. Solo el candidato se descarga, se **enmascara** (RUT, tarjeta, emails, teléfonos, titular) y se guarda.
+4. Lo descartado no se guarda: ni cuerpo, ni asunto, ni remitente. Solo un contador.
+
+El riesgo es el opuesto al habitual: un filtro angosto **pierde gastos en silencio**. Por eso la lista es
+generosa, se mide la ratio guardado/recibido y hay alerta si cae.
+
 ## Modelo de datos
 
 ```mermaid
