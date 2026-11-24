@@ -12,7 +12,7 @@ escribe cuando la decisión está cerca de implementarse; adelantarlo convierte 
 
 | Fase | Incremento | Fuente | Estado |
 |---|---|---|---|
-| 1 | Ingesta: webhook idempotente | push de Gmail | a construir |
+| 1 | Ingesta: webhook idempotente | push de Gmail | **hecha** (6 tests + p95 medido) |
 | 2 | Extracción: plantillas, fallback y guard | push de Gmail | a construir |
 | 3 | Producto: categorías, alias y resumen por categoría | push de Gmail | a construir |
 | 4 | Documentos y boletas con ítems | + boletas online | diseñado (ADR 0016, propuesto) |
@@ -25,8 +25,11 @@ escribe cuando la decisión está cerca de implementarse; adelantarlo convierte 
 
 **Objetivo:** que un correo que llega a Gmail termine guardado, crudo y una sola vez.
 
-**Alcance:** webhook con verificación OIDC, inserción idempotente en `raw_emails`, respuesta `200`/`5xx`
-según corresponda, cola leída con `SKIP LOCKED`. Sin extracción, sin LLM, sin UI.
+**Alcance:** webhook con verificación OIDC, inserción idempotente en `raw_documents` (`kind =
+'notification'`), respuesta `200`/`5xx`/`400` según corresponda. Sin extracción, sin LLM, sin UI.
+
+**Hecho:** 6 tests (uno por garantía del contrato), Postgres real con Testcontainers, CI en GitHub
+Actions, y p95 medido en el gate de latencia.
 
 **Diseño requerido antes de codear:** ninguno nuevo — lo cubren los ADR 0003, 0005, 0007 y 0008.
 

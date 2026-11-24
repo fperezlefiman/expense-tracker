@@ -81,11 +81,30 @@ Tres ideas sostienen el diseño:
 
 ## Cómo se corre
 
-Cuando exista el primer slice: `docker compose up -d` levanta PostgreSQL y `mvn spring-boot:run` la
-aplicación; `mvn verify` corre unitarios e integración (Testcontainers, requiere Docker).
+```bash
+docker run -d --name expense-pg -p 5432:5432 \
+  -e POSTGRES_DB=expense -e POSTGRES_USER=expense -e POSTGRES_PASSWORD=expense \
+  postgres:18-alpine
+mvn spring-boot:run          # Flyway aplica V1 al arrancar
+mvn verify                   # tests + integración (Testcontainers, requiere Docker)
+```
+
+El webhook escucha en `POST /gmail/notifications` y **exige un token OIDC de Google** con la audiencia
+`PUBSUB_AUDIENCE` y el email `PUBSUB_SERVICE_ACCOUNT`. Sin esos dos valores correctos devuelve `401`.
+
+## Números medidos
+
+| Qué | Valor (3 corridas) | Cómo |
+|---|---|---|
+| p50 del webhook | 66–93 ms | 50 concurrentes × 10 envíos, Postgres en Docker local |
+| p95 del webhook | **393–631 ms** | mismo gate; dominado por commits concurrentes con el pool por defecto |
+
+Medido en `IngestLatencyTest`. **No es el número de Cloud Run**: ahí se suma el salto de red, pero también
+hay pool gestionado y disco distinto. El valor de la cifra es que es reproducible y que cualquier
+regresión aparece en CI.
 
 ## Fuera de alcance
 
-- Sincronización bancaria y conciliación de cartolas.
+- Sincronización bancaria y conciliación de cartolas (fases 4 y 5 del roadmap).
 - UI propia: el entregable es la API; un front iría en otro repositorio.
 - Facturación: el diseño deja lugar (`account_id`, cuotas por cuenta), pero no se implementa todavía.

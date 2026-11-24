@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: expense-tracker
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/expense}
+    username: ${DB_USER:expense}
+    password: ${DB_PASSWORD:expense}
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+app:
+  pubsub:
+    audience: ${PUBSUB_AUDIENCE:expense-tracker-ingest}
+    service-account: ${PUBSUB_SERVICE_ACCOUNT:pubsub-push@localhost.iam.gserviceaccount.com}

@@ -14,9 +14,10 @@ el mismo monto son dos gastos legítimos.
 
 ## Decisión
 
-1. **La unidad de ingesta es el documento.** `raw_emails` pasa a **`raw_documents`** con `kind`
-   (`email`, `statement`, `receipt`, `image`) y `source_ref` (id del mensaje, hash del PDF o de la imagen).
-   La idempotencia pasa a `(account_id, kind, source_ref)`.
+1. **La unidad de ingesta es el documento.** La tabla se llama **`raw_documents` desde la V1**, con
+   `kind` (`notification`, `email`, `statement`, `receipt`, `image`) y `source_ref` (id del mensaje de
+   Pub/Sub, id de Gmail, hash del PDF o de la imagen). La idempotencia es
+   `(account_id, kind, source_ref)`.
 2. **`expenses` es la entidad canónica del hecho**, no del documento. El vínculo va en
    **`expense_documents`** (`expense_id`, `document_id`, `role`: `notification`, `statement`, `receipt`,
    `photo`).
@@ -52,7 +53,8 @@ el mismo monto son dos gastos legítimos.
 - El matching es barato y testeable: un test por caso (auto, sugerido, ninguno, ambiguo).
 - Agrega dos tablas y un renombre; a cambio, el número que el usuario mira —el total del mes— deja de
   ser una suma de duplicados.
-- El renombre **se hace antes de escribir código**, que es cuando es gratis.
+- El renombre **se adelantó a la V1**: la tabla nació como `raw_documents` porque el costo era cero antes
+  de escribir código y una migración con datos después. El 0017 se apoya en el mismo contenedor.
 
 ## Alternativas rechazadas
 
