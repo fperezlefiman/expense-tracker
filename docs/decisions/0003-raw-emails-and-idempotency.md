@@ -4,8 +4,11 @@
 
 > **Nota de nomenclatura (2026-11-23).** Este ADR es anterior al 0016. Donde acá dice `raw_emails` hoy se
 > lee `raw_documents`, y donde dice `gmail_message` se lee `source_ref`, con la clave única
-> `(account_id, kind, source_ref)` y `kind = 'notification'` para los avisos de Pub/Sub. La misma lectura
-> vale para los ADR 0006 a 0011, que siguen nombrando las tablas como estaban cuando se escribieron.
+> `(account_id, kind, source_ref)` y `kind = 'notification'` para los avisos de Pub/Sub. Para un aviso,
+> `source_ref` es el `messageId` de la entrega: la idempotencia que este ADR pide es la del **reintento de
+> Pub/Sub**. El mismo correo visto bajo varios `historyId` se deduplica en la fase 2, por id del mensaje de
+> Gmail (ver `docs/roadmap.md`). La misma lectura vale para los ADR 0006 a 0011, que siguen nombrando las
+> tablas como estaban cuando se escribieron.
 
 ## Contexto
 

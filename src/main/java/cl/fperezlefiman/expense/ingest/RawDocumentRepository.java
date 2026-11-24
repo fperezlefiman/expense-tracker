@@ -23,8 +23,9 @@ public class RawDocumentRepository {
     }
 
     /**
-     * Idempotent by design: a redelivered Pub/Sub message, or a second notification for the same mailbox
-     * history, must not create a second row. The unique key is (account_id, kind, source_ref).
+     * Idempotent by design: Pub/Sub delivers at least once, so a redelivered message must not create a
+     * second row. The unique key is (account_id, kind, source_ref), and for a notification source_ref is
+     * the Pub/Sub message id: the row records a delivery, not a mailbox state.
      */
     public void insertNotification(UUID accountId, String sourceRef, String payloadJson) {
         jdbc.sql("""

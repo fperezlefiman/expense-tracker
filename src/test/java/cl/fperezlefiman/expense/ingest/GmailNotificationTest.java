@@ -64,8 +64,9 @@ class GmailNotificationTest extends AbstractPostgresTest {
     }
 
     @Test
-    void twoNotificationsForTheSameHistoryStillStoreOneRow() throws Exception {
-        // Pub/Sub can announce the same mailbox change twice under different message ids.
+    void storesTwoDeliveriesOfTheSameHistorySeparately() throws Exception {
+        // Deliberate: the row is a delivery, not a mailbox state. The same email can appear under several
+        // historyIds, so the duplicate is removed in phase 2, keyed by the Gmail message id — not here.
         for (String messageId : List.of("msg-1", "msg-2")) {
             mvc.perform(post("/gmail/notifications")
                             .header("Authorization", "Bearer good")
@@ -74,7 +75,7 @@ class GmailNotificationTest extends AbstractPostgresTest {
                     .andExpect(status().isOk());
         }
 
-        assertThat(count()).isEqualTo(1);
+        assertThat(count()).isEqualTo(2);
     }
 
     @Test

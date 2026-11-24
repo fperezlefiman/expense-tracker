@@ -41,9 +41,11 @@ Tres ideas sostienen el diseño:
    duplicados.
 2. **El crudo se guarda antes de interpretarlo.** Un cambio de prompt se reprocesa sobre lo
    guardado, sin volver a pedirle nada a Gmail.
-3. **La idempotencia es una clave única** (`raw_documents`: `(account_id, kind, source_ref)`, con
-   `source_ref = historyId`), no un `if` en memoria. Se llavea por `historyId` y no por el `messageId`
-   de Pub/Sub: dos avisos distintos del mismo cambio del buzón tienen que colapsar en una fila.
+3. **La idempotencia es una clave única** (`raw_documents`: `(account_id, kind, source_ref)`), no un `if`
+   en memoria. Para un aviso, `source_ref` es el `messageId` de Pub/Sub: la fila registra **una entrega**,
+   no un estado del buzón. El mismo correo puede aparecer bajo varios `historyId` (etiquetas, full sync,
+   el poll de respaldo), así que el duplicado que importa se elimina una capa más arriba, con el id del
+   mensaje de Gmail (fase 2).
 4. **La tabla es la cola.** Pub/Sub solo trae el aviso; el trabajo pendiente vive en `raw_documents` y el
    worker lo toma con `SKIP LOCKED`. No hay dos registros del mismo trabajo que puedan desincronizarse
    (ADR 0008).

@@ -120,7 +120,7 @@ erDiagram
         uuid id PK
         uuid account_id FK
         text kind "'notification' hoy; 'email', 'statement', 'receipt', 'image' después"
-        text source_ref "historyId de Gmail: único por cuenta y kind"
+        text source_ref "id del mensaje de Pub/Sub: la fila es una entrega, no un estado"
         jsonb payload
         timestamptz received_at
         timestamptz processed_at "null = pendiente"
@@ -163,8 +163,9 @@ erDiagram
 Notas que importan más que las columnas:
 
 - **La clave de idempotencia es por cuenta y por tipo**: `(account_id, kind, source_ref)` único. Hoy
-  `kind = 'notification'` y `source_ref` guarda el `historyId` del aviso, así que dos avisos distintos del
-  mismo cambio del buzón —y el reintento del mismo aviso— dejan una sola fila.
+  `kind = 'notification'` y `source_ref` es el `messageId` de Pub/Sub, así que **un reintento del mismo
+  aviso** deja una sola fila. Dos avisos distintos para el mismo cambio del buzón sí dejan dos filas: son
+  dos entregas, y el correo que ambos señalan se deduplica en la fase 2 por **id del mensaje de Gmail**.
 - `expenses` guarda también `source_ref`: la deduplicación sobrevive a la purga del crudo (ADR 0011).
 - `attempts`, `next_attempt_at`, `blocked_by_quota`, `locked_at` y `locked_by` existen para que el
   worker reintente con backoff, respete la cuota (ADR 0012) y no bloquee la fila si muere.

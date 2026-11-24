@@ -51,12 +51,27 @@ no la latencia.
 **Alcance:** `TemplateRegistry` con la primera plantilla real, `LlmFallbackExtractor` activo, `MoneyGuard`,
 estado `needs_review`, `origin` y `parser_id`.
 
-**Diseño requerido antes de codear:** ninguno nuevo — ADR 0014 y 0015 ya lo definen. Sí hay que escribir
-el **primer fixture** (un correo real anonimizado) antes que la plantilla.
+**Diseño requerido antes de codear:** un ADR de **sincronización** (watermark de historial y dedupe del
+correo) — los ADR 0014 y 0015 ya definen el resto. Y el **primer fixture** (un correo real anonimizado)
+antes que la plantilla.
+
+**Precondición de sincronización (fijada acá para no re-descubrirla):**
+- Cada cuenta lleva un **watermark**: el último `historyId` ya procesado. El worker consulta
+  `users.history.list(startHistoryId = watermark)`, **nunca** el `historyId` del aviso: el aviso marca el
+  estado *posterior* al cambio, así que usarlo como punto de partida se salta justo ese cambio.
+- El historial devuelve **cambios, no correos**: el mismo mensaje aparece en varios registros
+  (`messageAdded` y después `labelAdded`), y vuelve a aparecer tras un `404` → full sync o en el poll de
+  respaldo que Google recomienda cuando los avisos se pierden.
+- Por eso el correo se guarda como `raw_documents (kind = 'email', source_ref = id del mensaje de Gmail)`
+  y la unicidad `(account_id, kind, source_ref)` hace el trabajo; el gasto hereda el `source_ref`
+  (ADR 0011). La notificación **no** deduplica correos: registra entregas.
+- `404` de historial = el watermark quedó viejo: full sync y el watermark salta al `historyId` de la
+  última página.
 
 **Gate de salida:**
 - Un correo real de cada banco propio resuelto con coincidencia exacta de monto, moneda y fecha.
 - Ningún gasto creado con un monto que no esté literalmente en el cuerpo (test de propiedad del guard).
+- El mismo correo procesado desde dos ventanas de historial y desde un full sync deja **un** gasto.
 - Evals del fallback corriendo en CI con el gate de `is_expense` al 100 %.
 
 **Riesgo principal:** aflojar el guard "porque el modelo acierta casi siempre". El guard no es un
